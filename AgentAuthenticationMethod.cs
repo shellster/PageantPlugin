@@ -1,11 +1,13 @@
 ﻿using System;
-using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using Renci.SshNet;
 using Renci.SshNet.Common;
 using Renci.SshNet.Messages;
 using Renci.SshNet.Messages.Authentication;
+using System.Collections.Generic;
+using System.Threading;
 
 namespace PageantPlugin
 {
@@ -14,7 +16,7 @@ namespace PageantPlugin
     /// </summary>
     public class AgentAuthenticationMethod : AuthenticationMethod, IDisposable {
         private AuthenticationResult _authenticationResult = AuthenticationResult.Failure;
-        private EventWaitHandle _authenticationCompleted = new ManualResetEvent (false);
+        private EventWaitHandle _authenticationCompleted = new ManualResetEvent(false);
         private bool _isSignatureRequired;
 
         /// <summary>
@@ -39,6 +41,46 @@ namespace PageantPlugin
             Protocol = protocol;
         }
 
+        private Delegate AddPrivateEvent(Session session, string eventName, string handlerName)
+        {
+            var eventInfo = session.GetType().GetEvent(eventName, BindingFlags.NonPublic | BindingFlags.Instance);
+            MethodInfo handler = this.GetType().GetMethod(handlerName, BindingFlags.NonPublic | BindingFlags.Instance);
+            var eh = Delegate.CreateDelegate(eventInfo.EventHandlerType, this, handler);
+            var minfo = eventInfo.GetAddMethod(true);
+            minfo.Invoke(session, new object[] { eh });
+            return eh;
+        }
+
+        private static void RemovePrivateEvent(Session session, string eventName, Delegate handler)
+        {
+            var eventInfo = session.GetType().GetEvent(eventName, BindingFlags.NonPublic | BindingFlags.Instance);
+            PrivateCall(session, "RemoveEventHandler", new object[] { session, handler });
+        }
+
+        private static object PrivateCall(object o, string methodName, params object[] args)
+        {
+            List<Type> objectTypes = new List<Type> { };
+
+            foreach(object arg in args) {
+                objectTypes.Add(arg.GetType());
+            }
+
+            var mi = o.GetType().GetMethod(methodName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance, null, CallingConventions.Standard, objectTypes.ToArray(), new ParameterModifier[] { });
+
+            if (mi != null)
+            {
+                try
+                {
+                    return mi.Invoke(o, args);
+                }
+                catch(Exception ex)
+                {
+                    throw ex.InnerException;
+                }
+            }
+            return null;
+        }
+
         /// <summary>
         /// Authenticates the specified session.
         /// </summary>
@@ -48,9 +90,10 @@ namespace PageantPlugin
             if (Protocol == null)
                 return AuthenticationResult.Failure;
 
-            session.UserAuthenticationSuccessReceived += Session_UserAuthenticationSuccessReceived;
-            session.UserAuthenticationFailureReceived += Session_UserAuthenticationFailureReceived;
-            session.UserAuthenticationPublicKeyReceived += Session_UserAuthenticationPublicKeyReceived;
+            Delegate dUserAuthenticationSuccessReceived = AddPrivateEvent(session, "UserAuthenticationSuccessReceived", "Session_UserAuthenticationSuccessReceived");
+            Delegate dUserAuthenticationFailureReceived = AddPrivateEvent(session, "UserAuthenticationFailureReceived", "Session_UserAuthenticationFailureReceived");
+            Delegate dUserAuthenticationPublicKeyReceived  = AddPrivateEvent(session, "UserAuthenticationPublicKeyReceived", "Session_UserAuthenticationPublicKeyReceived");
+            Thread.Sleep(500);
 
             session.RegisterMessage ("SSH_MSG_USERAUTH_PK_OK");
 
@@ -65,9 +108,8 @@ namespace PageantPlugin
                         identity.Blob);
 
                     //  Send public key authentication request
-                    session.SendMessage (message);
-
-                    session.WaitOnHandle (_authenticationCompleted, new TimeSpan(-1));
+                    PrivateCall(session, "SendMessage", new object[] { message });
+                    PrivateCall(session, "WaitOnHandle", new object[] { _authenticationCompleted, new TimeSpan(-1) });
 
                     if (_isSignatureRequired) {
                         _authenticationCompleted.Reset ();
@@ -82,10 +124,10 @@ namespace PageantPlugin
                         signatureMessage.Signature = this.Protocol.SignData (identity, signatureData);
 
                         //  Send public key authentication request with signature
-                        session.SendMessage (signatureMessage);
+                        PrivateCall(session, "SendMessage", new object[] { signatureMessage });
                     }
 
-                    session.WaitOnHandle (_authenticationCompleted, new TimeSpan(-1));
+                    PrivateCall(session, "WaitOnHandle", new object[] { _authenticationCompleted, new TimeSpan(-1) });
 
                     if (_authenticationResult == AuthenticationResult.Success) {
                         break;
@@ -93,16 +135,15 @@ namespace PageantPlugin
                 }
                 return _authenticationResult;
             } finally {
-                session.UserAuthenticationSuccessReceived -= Session_UserAuthenticationSuccessReceived;
-                session.UserAuthenticationFailureReceived -= Session_UserAuthenticationFailureReceived;
-                session.UserAuthenticationPublicKeyReceived -= Session_UserAuthenticationPublicKeyReceived;
+                RemovePrivateEvent(session, "UserAuthenticationSuccessReceived", dUserAuthenticationSuccessReceived);
+                RemovePrivateEvent(session, "UserAuthenticationFailureReceived", dUserAuthenticationFailureReceived);
+                RemovePrivateEvent(session, "UserAuthenticationPublicKeyReceived", dUserAuthenticationPublicKeyReceived);
                 session.UnRegisterMessage ("SSH_MSG_USERAUTH_PK_OK");
             }
         }
 
         private void Session_UserAuthenticationSuccessReceived (object sender, MessageEventArgs<SuccessMessage> e) {
             this._authenticationResult = AuthenticationResult.Success;
-
             this._authenticationCompleted.Set ();
         }
 
@@ -118,7 +159,7 @@ namespace PageantPlugin
             _authenticationCompleted.Set ();
         }
 
-        private void Session_UserAuthenticationPublicKeyReceived (object sender, MessageEventArgs<PublicKeyMessage> e) {
+        private void Session_UserAuthenticationPublicKeyReceived (object sender, EventArgs e) {
             this._isSignatureRequired = true;
             this._authenticationCompleted.Set ();
         }

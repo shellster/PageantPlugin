@@ -1,0 +1,9 @@
+C:\Users\shellster\Documents\GitHub\PageantPlugin\obj\Release\PageantPlugin.csproj.CoreCompileInputs.cache
+C:\Users\shellster\Documents\GitHub\PageantPlugin\bin\Release\PageantPlugin.dll
+C:\Users\shellster\Documents\GitHub\PageantPlugin\bin\Release\PageantPlugin.pdb
+C:\Users\shellster\Documents\GitHub\PageantPlugin\bin\Release\Renci.SshNet.dll
+C:\Users\shellster\Documents\GitHub\PageantPlugin\bin\Release\Renci.SshNet.pdb
+C:\Users\shellster\Documents\GitHub\PageantPlugin\bin\Release\Renci.SshNet.xml
+C:\Users\shellster\Documents\GitHub\PageantPlugin\obj\Release\PageantPlugin.csproj.CopyComplete
+C:\Users\shellster\Documents\GitHub\PageantPlugin\obj\Release\PageantPlugin.dll
+C:\Users\shellster\Documents\GitHub\PageantPlugin\obj\Release\PageantPlugin.pdb
